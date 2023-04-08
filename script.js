@@ -9,12 +9,134 @@ var GENESIS = '0x000000000000000000000000000000000000000000000000000000000000000
 
 // This is the ABI for your contract (get it from Remix, in the 'Compile' tab)
 // ============================================================
-var abi = []; // FIXME: fill this in with your contract's ABI //Be sure to only have one array, not two
+var abi = [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "debtor",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "creditor",
+          "type": "address"
+        },
+        {
+          "internalType": "int32",
+          "name": "amount",
+          "type": "int32"
+        }
+      ],
+      "name": "addDebt",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "creditor",
+          "type": "address"
+        },
+        {
+          "internalType": "int32",
+          "name": "amount",
+          "type": "int32"
+        }
+      ],
+      "name": "add_IOU",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "debts",
+      "outputs": [
+        {
+          "internalType": "int32",
+          "name": "",
+          "type": "int32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "getUsers",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "userArr",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "debtor",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "creditor",
+          "type": "address"
+        }
+      ],
+      "name": "lookup",
+      "outputs": [
+        {
+          "internalType": "int32",
+          "name": "value",
+          "type": "int32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "users",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]; // FIXME: fill this in with your contract's ABI //Be sure to only have one array, not two
 // ============================================================
 abiDecoder.addABI(abi);
 // call abiDecoder.decodeMethod to use this - see 'getAllFunctionCalls' for more
 
-var contractAddress = ""; // FIXME: fill this in with your contract's address/hash
+var contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // FIXME: fill this in with your contract's address/hash
 
 var BlockchainSplitwise = new ethers.Contract(contractAddress, abi, provider.getSigner());
 
@@ -26,7 +148,7 @@ var BlockchainSplitwise = new ethers.Contract(contractAddress, abi, provider.get
 
 // Takes ENS Address and returns amount owed by debtor
 async function lookup(debtor, creditor) {
-    return BlockchainSplitwise.lookup(debtor, creditor).c[0]
+    return await BlockchainSplitwise.lookup(debtor, creditor);
 }
 
 // Define the Function Get Neighbors
@@ -60,25 +182,26 @@ async function getTotalOwed(user) {
 // TODO: Get the last time this user has sent or received an IOU, in seconds since Jan. 1, 1970
 // Return null if you can't find any activity for the user.
 // HINT: Try looking at the way 'getAllFunctionCalls' is written. You can modify it if you'd like.
-async function getLastActive(user) {
-	let functionCalls = await getAllFunctionCalls(contractAddress, 'add_IOU');
-    let filterdFunctionCalls = functionCalls.filter((functionCall) => functionCall.from === user || functionCall.args[0] === user)
-    let sortedFcnCalls = filterdFunctionCalls.sort((a, b) => a.timestamp > b.timestamp);
-
-    if (sortedFcnCalls.length > 0) {
-        return sortedFcnCalls[0].timestamp
-    }
-    else {
-        return null
-    }
-}
+async function getLastActive(userENS) {
+	// Get all IOU transfer function calls involving the user
+	let iouTransfers = await getAllFunctionCalls(contractAddress, "add_IOU");
+	const filteredIOUs = iouTransfers.filter(iou => iou.from.toLowerCase() === userENS.toLowerCase() || iou.args[0].toLowerCase() === userENS.toLowerCase());
+	const sortedIOUs = filteredIOUs.sort((a, b) => a.t - b.t); 
+	const mostRecentIOU = sortedIOUs[0];
+	const time = mostRecentIOU ? mostRecentIOU.t : null;
+	console.log("time ", time)
+	return time;
+  }
+  
+  
+  
 
 // TODO: add an IOU ('I owe you') to the system
 // The person you owe money is passed as 'creditor'
 // The amount you owe them is passed as 'amount'
 async function add_IOU(creditor, amount) {
 
-	var path = await doBFS(creditor, web3.eth.defaultAccount, getNeighbors)
+	var path = await doBFS(creditor, defaultAccount, getNeighbors) // Get Path from creditor to defaultAccount
 	var min = 0;
 	if (path !== null){
 		min = amount;
@@ -93,7 +216,7 @@ async function add_IOU(creditor, amount) {
 		}
 		
 	}
-	BlockchainSplitwise.add_IOU(creditor, amount - min,{gas:300000});
+	BlockchainSplitwise.add_IOU(creditor, amount - min,{gasLimit:300000}); // gas => gasLimit
 	// console.log("path", path)
 }
 
@@ -270,6 +393,8 @@ async function sanityCheck() {
 	score += check("lookup(0,1) now 10", parseInt(lookup_0_1, 10) === 10);
 
 	var timeLastActive = await getLastActive(accounts[0]);
+	console.log("accounts[0] current value " + accounts[0]);
+	console.log("getLastActive(0) current value " + timeLastActive);
 	var timeNow = Date.now()/1000;
 	var difference = timeNow - timeLastActive;
 	score += check("getLastActive(0) works", difference <= 60 && difference >= -3); // -3 to 60 seconds
@@ -277,4 +402,4 @@ async function sanityCheck() {
 	console.log("Final Score: " + score +"/21");
 }
 
-// sanityCheck() //Uncomment this line to run the sanity check when you first open index.html
+sanityCheck() //Uncomment this line to run the sanity check when you first open index.html
