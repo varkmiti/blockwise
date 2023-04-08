@@ -24,30 +24,79 @@ var BlockchainSplitwise = new ethers.Contract(contractAddress, abi, provider.get
 
 // TODO: Add any helper functions here!
 
+// Takes ENS Address and returns amount owed by debtor
+async function lookup(debtor, creditor) {
+    return BlockchainSplitwise.lookup(debtor, creditor).c[0]
+}
+
+// Define the Function Get Neighbors
+async function getNeighbors(user) {
+	var neighbors = [];
+	var users = getUsers();
+	for (var i = 0; i < users.length; i++)
+		if(lookup(user, users[i]) > 0)
+			neighbors.push(users[i]);
+	// console.log("user", user, neighbors)
+	return neighbors;	
+}
+
 // TODO: Return a list of all users (creditors or debtors) in the system
 // All users in the system are everyone who has ever sent or received an IOU
+// Returns Array of ENS Addresses
 async function getUsers() {
-
+    return BlockchainSplitwise.getUsers(); // Calls Contract Function that add's address to array if add_IOU was called on address
 }
 
 // TODO: Get the total amount owed by the user specified by 'user'
 async function getTotalOwed(user) {
-
+    let debt = 0;
+    let users = await getUsers();
+    for (let i =0; i < users.length; i++) {
+            debt += await lookup(user, users[i]);
+    }
+    return debt;
 }
 
 // TODO: Get the last time this user has sent or received an IOU, in seconds since Jan. 1, 1970
 // Return null if you can't find any activity for the user.
 // HINT: Try looking at the way 'getAllFunctionCalls' is written. You can modify it if you'd like.
 async function getLastActive(user) {
-	
+	let functionCalls = await getAllFunctionCalls(contractAddress, 'add_IOU');
+    let filterdFunctionCalls = functionCalls.filter((functionCall) => functionCall.from === user || functionCall.args[0] === user)
+    let sortedFcnCalls = filterdFunctionCalls.sort((a, b) => a.timestamp > b.timestamp);
+
+    if (sortedFcnCalls.length > 0) {
+        return sortedFcnCalls[0].timestamp
+    }
+    else {
+        return null
+    }
 }
 
 // TODO: add an IOU ('I owe you') to the system
 // The person you owe money is passed as 'creditor'
 // The amount you owe them is passed as 'amount'
 async function add_IOU(creditor, amount) {
-	
+
+	var path = await doBFS(creditor, web3.eth.defaultAccount, getNeighbors)
+	var min = 0;
+	if (path !== null){
+		min = amount;
+		for (var i = 0; i < path.length - 1; i++){
+			var amount2 = lookup(path[i], path[i + 1])
+			if (amount2 < min)
+				min = amount2;
+		}
+		// console.log("minimum", min);
+		for(var i = 0; i < path.length - 1; i++){
+			BlockchainSplitwise.addDebt(path[i], path[i+1], -min)	
+		}
+		
+	}
+	BlockchainSplitwise.add_IOU(creditor, amount - min,{gas:300000});
+	// console.log("path", path)
 }
+
 
 // =============================================================================
 //                              Provided Functions
